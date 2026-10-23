@@ -1082,5 +1082,31 @@
             document.getElementById('notification-modal').classList.toggle('hidden');
         }
     </script>
+<!-- Firebase SDK & Config -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, onSnapshot, query } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // Cấu hình Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCE8ii7SFEY9-FcggrdFm4CI0MYEWEOQiHY",
+            authDomain: "rescue-paws-619b7.firebaseapp.com",
+            databaseURL: "https://rescue-paws-619b7-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "rescue-paws-619b7",
+            storageBucket: "rescue-paws-619b7.firebasestorage.app",
+            messagingSenderId: "816195406002",
+            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab",
+            measurementId: "G-M0PJT2FETQ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        window.db = db;
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.getDocs = getDocs;
+        window.onSnapshot = onSnapshot;
+        window.query = query;
+    </script>
 </body>
 </html>
