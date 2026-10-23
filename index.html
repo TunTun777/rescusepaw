@@ -617,25 +617,73 @@
             return Math.floor(s / 86400) + ' ngày trước';
         }
 
-        // appPosts hiển thị bản demo cho tới khi Firestore tải xong
-        let appPosts = [...initialPosts];
+        // --- HÀNG ĐỢI BÀI CHƯA LÊN ĐƯỢC FIREBASE (lưu trên máy, F5 không mất) ---
+        let pendingPosts = LS.get('rp_pending', []);
+        function savePending() { LS.set('rp_pending', pendingPosts); }
+        let lastCloudList = [];
+        let flushed = false;
+
+        function decoratePost(d) {
+            const id = Number(d.id);
+            return {
+                ...d,
+                id: id,
+                author: d.author + (d.authorId === myId ? ' (Bạn)' : ''),
+                time: (d.seed || d.createdMs == null) ? d.time : timeAgo(d.createdMs),
+                liked: likedIds.has(id),
+                images: d.images || [],
+                timeline: d.timeline || [],
+                comments: (d.comments || []).map(c => ({ ...c, time: c.ms ? timeAgo(c.ms) : c.time }))
+            };
+        }
+
+        // Gộp bài từ Firestore + bài đang chờ đồng bộ (bỏ trùng theo id)
+        function rebuildPosts() {
+            const byId = new Map();
+            const base = (window.cloud || lastCloudList.length) ? lastCloudList : initialPosts;
+            base.forEach(d => byId.set(Number(d.id), d));
+            pendingPosts.forEach(d => { if (!byId.has(Number(d.id))) byId.set(Number(d.id), d); });
+            appPosts = [...byId.values()]
+                .sort((x, y) => (y.createdMs || 0) - (x.createdMs || 0))
+                .map(decoratePost);
+            refreshFeed();
+        }
+
+        async function flushPending() {
+            if (!window.cloud || !pendingPosts.length) return;
+            for (const p of [...pendingPosts]) {
+                try {
+                    await window.cloud.addPost(p);
+                    pendingPosts = pendingPosts.filter(x => x.id !== p.id);
+                    savePending();
+                } catch (e) { console.warn('Chưa đồng bộ được bài chờ:', e); break; }
+            }
+        }
+
+        function setCloudStatus(kind, msg) {
+            let el = document.getElementById('cloud-status');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'cloud-status';
+                el.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:9999;padding:3px 10px;border-radius:999px;font:700 10px/1.5 sans-serif;color:#fff;max-width:92vw;text-align:center;pointer-events:none;transition:opacity .3s';
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.background = kind === 'ok' ? '#059669' : kind === 'warn' ? '#d97706' : '#dc2626';
+            el.style.opacity = '1';
+            clearTimeout(el._t);
+            if (kind === 'ok') el._t = setTimeout(() => { el.style.opacity = '0'; }, 3000);
+        }
+        window.setCloudStatus = setCloudStatus;
+
+        // appPosts: bài đang chờ + demo, hiển thị tới khi Firestore tải xong
+        let appPosts = [...pendingPosts.map(decoratePost), ...initialPosts];
 
         // --- ĐỒNG BỘ TỪ FIRESTORE ---
         function onCloudPosts(list) {
-            appPosts = list.map(d => {
-                const id = Number(d.id);
-                return {
-                    ...d,
-                    id: id,
-                    author: d.author + (d.authorId === myId ? ' (Bạn)' : ''),
-                    time: d.seed ? d.time : timeAgo(d.createdMs),
-                    liked: likedIds.has(id),
-                    images: d.images || [],
-                    timeline: d.timeline || [],
-                    comments: (d.comments || []).map(c => ({ ...c, time: c.ms ? timeAgo(c.ms) : c.time }))
-                };
-            });
-            refreshFeed();
+            lastCloudList = list;
+            rebuildPosts();
+            if (!flushed) { flushed = true; flushPending(); }
         }
         window.onCloudPosts = onCloudPosts;
 
@@ -1111,12 +1159,23 @@
             }
             likedIds.add(newPost.id);
             LS.set('rp_liked', [...likedIds]);
+            // Luôn giữ bản trên máy tới khi Firebase xác nhận → F5 không bao giờ mất bài
+            pendingPosts.unshift(newPost);
+            savePending();
             if (window.cloud) {
-                window.cloud.addPost(newPost).catch(err => alert('Đăng bài thất bại: ' + err.message));
+                window.cloud.addPost(newPost).then(() => {
+                    pendingPosts = pendingPosts.filter(x => x.id !== newPost.id);
+                    savePending();
+                    setCloudStatus('ok', 'Đã đăng lên Firebase ✓');
+                }).catch(err => {
+                    console.error('Đăng bài lỗi:', err);
+                    setCloudStatus('err', 'Chưa lưu được lên Firebase (' + (err.code || err.message) + '). Bài đang lưu tạm trên máy.');
+                    rebuildPosts();
+                });
             } else {
-                newPost.liked = true;
-                appPosts.unshift(newPost);
+                setCloudStatus('warn', 'Chưa kết nối Firebase — bài chỉ lưu trên máy này');
             }
+            rebuildPosts();
             
             e.target.reset();
             document.getElementById('app-upload-placeholder').classList.remove('hidden');
@@ -1198,16 +1257,15 @@
         const firebaseConfig = {
             apiKey: "AIzaSyCE8ii7sFEY9-FcggrdFm4CI0MYEWEQiHY",
             authDomain: "rescue-paws-619b7.firebaseapp.com",
-            databaseURL: "https://rescue-paws-619b7-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "rescue-paws-619b7",
             storageBucket: "rescue-paws-619b7.firebasestorage.app",
             messagingSenderId: "816195406002",
-            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab",
-            measurementId: "G-M0PJT2FETQ"
+            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab"
         };
 
         if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("PASTE")) {
-            console.warn("Chưa dán firebaseConfig → app chạy chế độ demo, F5 sẽ mất dữ liệu.");
+            console.warn("Chưa dán firebaseConfig → app chạy chế độ demo.");
+            window.setCloudStatus('warn', 'Chưa cấu hình Firebase — chế độ demo');
         } else {
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
@@ -1228,8 +1286,13 @@
                     window.seedDemo();
                     return;
                 }
+                window.setCloudStatus(snap.metadata.fromCache ? 'warn' : 'ok',
+                    snap.metadata.fromCache ? 'Đang offline — dữ liệu từ bộ nhớ đệm' : 'Đã kết nối Firebase ✓');
                 window.onCloudPosts(snap.docs.map(d => d.data()));
-            }, (err) => console.error("Firestore lỗi:", err));
+            }, (err) => {
+                console.error("Firestore lỗi:", err);
+                window.setCloudStatus('err', 'Firestore lỗi: ' + (err.code || err.message));
+            });
         }
     </script>
 </body>
