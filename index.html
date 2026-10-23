@@ -591,7 +591,82 @@
         ];
 
         // --- GLOBAL APP STATE ---
+        // --- DANH TÍNH & TRẠNG THÁI CỤC BỘ (chỉ lưu trên máy này) ---
+        const LS = {
+            get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch (e) { return d; } },
+            set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+        };
+        let myId = LS.get('rp_uid', null);
+        if (!myId) { myId = 'u' + Math.random().toString(36).slice(2) + Date.now().toString(36); LS.set('rp_uid', myId); }
+        function getMyName() {
+            let n = LS.get('rp_name', null);
+            if (!n) {
+                n = (prompt('Tên hiển thị của bạn là gì?', '') || '').trim().slice(0, 40) || 'Người dùng ẩn danh';
+                LS.set('rp_name', n);
+            }
+            return n;
+        }
+        let likedIds = new Set(LS.get('rp_liked', []));
+        let activeFilter = 'all';
+
+        function timeAgo(ms) {
+            const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+            if (s < 60) return 'Vừa xong';
+            if (s < 3600) return Math.floor(s / 60) + ' phút trước';
+            if (s < 86400) return Math.floor(s / 3600) + ' giờ trước';
+            return Math.floor(s / 86400) + ' ngày trước';
+        }
+
+        // appPosts hiển thị bản demo cho tới khi Firestore tải xong
         let appPosts = [...initialPosts];
+
+        // --- ĐỒNG BỘ TỪ FIRESTORE ---
+        function onCloudPosts(list) {
+            appPosts = list.map(d => {
+                const id = Number(d.id);
+                return {
+                    ...d,
+                    id: id,
+                    author: d.author + (d.authorId === myId ? ' (Bạn)' : ''),
+                    time: d.seed ? d.time : timeAgo(d.createdMs),
+                    liked: likedIds.has(id),
+                    images: d.images || [],
+                    timeline: d.timeline || [],
+                    comments: (d.comments || []).map(c => ({ ...c, time: c.ms ? timeAgo(c.ms) : c.time }))
+                };
+            });
+            refreshFeed();
+        }
+        window.onCloudPosts = onCloudPosts;
+
+        // Tạo dữ liệu demo lần đầu khi collection còn trống
+        window.seedDemo = function () {
+            initialPosts.forEach((p, i) => {
+                const { liked, ...rest } = p;
+                window.cloud.addPost({ ...rest, seed: true, createdMs: 1000000 - i });
+            });
+        };
+
+        function postsForFilter(type) {
+            if (type === 'all') return appPosts;
+            if (type === 'SOS') return appPosts.filter(p => p.status === 'SOS Khẩn cấp');
+            if (type === 'fund') return appPosts.filter(p => p.hasFund);
+            if (type === 'near') return appPosts.filter(p => parseFloat(p.distance) <= 3.0);
+            return appPosts.filter(p => p.petType === type);
+        }
+
+        // Render lại nhưng giữ nội dung đang gõ dở trong ô bình luận + bộ lọc đang chọn
+        function refreshFeed() {
+            const typed = {};
+            document.querySelectorAll('[id^="input-comment-"]').forEach(i => { if (i.value) typed[i.id] = i.value; });
+            const focusId = document.activeElement && document.activeElement.id;
+            renderFeed(postsForFilter(activeFilter));
+            Object.entries(typed).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+            if (focusId && focusId.startsWith('input-comment-')) {
+                const el = document.getElementById(focusId);
+                if (el) el.focus();
+            }
+        }
         let postPickerLocation = { lat: 10.7769, lng: 106.7009 };
         let appFullMap = null;
         let pickerMap = null;
@@ -796,6 +871,7 @@
 
         // --- FILTER CHIPS CONTROLLER ---
         function filterFeed(type, btn) {
+            activeFilter = type;
             document.querySelectorAll('.filter-chip').forEach(b => {
                 b.className = 'filter-chip bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap';
             });
@@ -816,11 +892,14 @@
 
         function toggleAppLike(id) {
             const post = appPosts.find(p => p.id === id);
-            if (post) {
-                post.liked = !post.liked;
-                post.likes += post.liked ? 1 : -1;
-                renderFeed(appPosts);
-            }
+            if (!post) return;
+            const nowLiked = !likedIds.has(id);
+            if (nowLiked) likedIds.add(id); else likedIds.delete(id);
+            LS.set('rp_liked', [...likedIds]);
+            post.liked = nowLiked;
+            post.likes += nowLiked ? 1 : -1;
+            refreshFeed();
+            if (window.cloud) window.cloud.like(id, nowLiked ? 1 : -1).catch(e => console.error(e));
         }
 
         function focusCommentInput(id) {
@@ -836,29 +915,31 @@
 
             const post = appPosts.find(p => p.id === id);
             if (post) {
-                post.comments.push({
-                    name: "Bạn (Tôi)",
-                    text: text,
-                    time: "Vừa xong"
-                });
+                const c = { name: getMyName(), text: text.slice(0, 500), ms: Date.now() };
                 input.value = "";
-                renderFeed(appPosts);
+                if (window.cloud) {
+                    window.cloud.comment(id, c).catch(err => alert('Không gửi được bình luận: ' + err.message));
+                } else {
+                    post.comments.push({ ...c, time: 'Vừa xong' });
+                }
+                refreshFeed();
             }
         }
 
         function donateModal(id) {
             const amount = prompt("Nhập số tiền ủng hộ phẫu thuật cho bé (VNĐ):", "100000");
-            if (amount && !isNaN(amount)) {
+            const n = parseInt(amount);
+            if (amount && !isNaN(n) && n > 0) {
                 const post = appPosts.find(p => p.id === id);
                 if (post) {
-                    post.raised += parseInt(amount);
-                    alert(`🎉 Cảm ơn bạn đã quyên góp ${formatVND(amount)} cho ca cứu hộ!`);
-                    renderFeed(appPosts);
+                    post.raised += n;
+                    alert(`🎉 Cảm ơn bạn đã quyên góp ${formatVND(n)} cho ca cứu hộ!`);
+                    refreshFeed();
+                    if (window.cloud) window.cloud.donate(id, n).catch(e => console.error(e));
                 }
             }
         }
 
-        // --- FULL MAP TAB LOGIC WITH Leaflet.js ---
         function initAppFullMap() {
             if (appFullMap) {
                 appFullMap.invalidateSize();
@@ -945,10 +1026,21 @@
                 files.forEach(file => {
                     const reader = new FileReader();
                     reader.onload = function(evt) {
-                        const img = document.createElement('img');
-                        img.src = evt.target.result;
-                        img.className = 'h-20 w-full object-cover rounded-xl border border-slate-200 shadow-xs';
-                        previewBox.appendChild(img);
+                        const raw = new Image();
+                        raw.onload = function() {
+                            // Nén ảnh: tối đa 640px, JPEG 0.6 để vừa giới hạn 1 MiB/doc của Firestore
+                            const MAX = 640;
+                            const scale = Math.min(1, MAX / Math.max(raw.width, raw.height));
+                            const canvas = document.createElement('canvas');
+                            canvas.width = Math.round(raw.width * scale);
+                            canvas.height = Math.round(raw.height * scale);
+                            canvas.getContext('2d').drawImage(raw, 0, 0, canvas.width, canvas.height);
+                            const img = document.createElement('img');
+                            img.src = canvas.toDataURL('image/jpeg', 0.6);
+                            img.className = 'h-20 w-full object-cover rounded-xl border border-slate-200 shadow-xs';
+                            previewBox.appendChild(img);
+                        };
+                        raw.src = evt.target.result;
                     }
                     reader.readAsDataURL(file);
                 });
@@ -988,7 +1080,9 @@
 
             const newPost = {
                 id: Date.now(),
-                author: "Nguyễn Minh Tâm (Bạn)",
+                author: getMyName(),
+                authorId: myId,
+                createdMs: Date.now(),
                 avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
                 title: title,
                 petType: pet,
@@ -1002,7 +1096,6 @@
                 time: "Vừa xong",
                 distance: "0.1 km",
                 likes: 1,
-                liked: true,
                 hasFund: hasFund,
                 raised: 0,
                 target: fundTarget,
@@ -1010,14 +1103,27 @@
                 timeline: [{ status: status, note: "Phát tín hiệu SOS khẩn cấp", time: "Vừa xong" }]
             };
 
-            appPosts.unshift(newPost);
+            // Firestore giới hạn 1 MiB/doc → chặn nếu ảnh quá nặng
+            const totalSize = JSON.stringify(newPost).length;
+            if (totalSize > 900000) {
+                alert('Ảnh quá nặng (' + Math.round(totalSize / 1024) + ' KB). Chọn ít ảnh hơn hoặc ảnh nhỏ hơn nhé.');
+                return;
+            }
+            likedIds.add(newPost.id);
+            LS.set('rp_liked', [...likedIds]);
+            if (window.cloud) {
+                window.cloud.addPost(newPost).catch(err => alert('Đăng bài thất bại: ' + err.message));
+            } else {
+                newPost.liked = true;
+                appPosts.unshift(newPost);
+            }
             
             e.target.reset();
             document.getElementById('app-upload-placeholder').classList.remove('hidden');
             document.getElementById('app-image-preview-box').classList.add('hidden');
 
             alert("🚨 Tín hiệu SOS cứu hộ của bạn đã được phát báo thành công!");
-            renderFeed(appPosts);
+            refreshFeed();
             switchTab('feed');
         }
 
@@ -1082,31 +1188,47 @@
             document.getElementById('notification-modal').classList.toggle('hidden');
         }
     </script>
-<!-- Firebase SDK & Config -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, onSnapshot, query } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // Cấu hình Firebase
+    <!-- FIREBASE (Firestore) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, updateDoc, onSnapshot, query, orderBy, limit, increment, arrayUnion }
+            from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
         const firebaseConfig = {
-            apiKey: "AIzaSyCE8ii7SFEY9-FcggrdFm4CI0MYEWEOQiHY",
+            apiKey: "AIzaSyCE8ii7sFEY9-FcggrdFm4CI0MYEWEQiHY",
             authDomain: "rescue-paws-619b7.firebaseapp.com",
-            databaseURL: "https://rescue-paws-619b7-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "rescue-paws-619b7",
             storageBucket: "rescue-paws-619b7.firebasestorage.app",
             messagingSenderId: "816195406002",
-            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab",
-            measurementId: "G-M0PJT2FETQ"
+            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        window.db = db;
-        window.collection = collection;
-        window.addDoc = addDoc;
-        window.getDocs = getDocs;
-        window.onSnapshot = onSnapshot;
-        window.query = query;
+        if (!firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("PASTE")) {
+            console.warn("Chưa dán firebaseConfig → app chạy chế độ demo, F5 sẽ mất dữ liệu.");
+        } else {
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            const ref = (id) => doc(db, "posts", String(id));
+            let seeded = false;
+
+            window.cloud = {
+                addPost: (p) => setDoc(ref(p.id), p),
+                like:    (id, d) => updateDoc(ref(id), { likes: increment(d) }),
+                comment: (id, c) => updateDoc(ref(id), { comments: arrayUnion(c) }),
+                donate:  (id, a) => updateDoc(ref(id), { raised: increment(a) })
+            };
+
+            const q = query(collection(db, "posts"), orderBy("createdMs", "desc"), limit(100));
+            onSnapshot(q, (snap) => {
+                if (snap.empty && !snap.metadata.fromCache && !seeded) {
+                    seeded = true;
+                    window.seedDemo();
+                    return;
+                }
+                window.onCloudPosts(snap.docs.map(d => d.data()));
+            }, (err) => console.error("Firestore lỗi:", err));
+        }
     </script>
 </body>
 </html>
