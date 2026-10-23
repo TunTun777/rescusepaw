@@ -4,469 +4,1082 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rescue Paws - Cứu Hộ Thú Cưng</title>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Leaflet CSS -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fff7ed',
+                            100: '#ffedd5',
+                            200: '#fed7aa',
+                            500: '#ff6b35',
+                            600: '#ea580c',
+                            700: '#c2410c',
+                        },
+                        safe: {
+                            500: '#10b981',
+                            600: '#059669',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- FontAwesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
     <style>
-        .mobile-frame {
-            max-width: 480px;
-            margin: 0 auto;
+        body {
+            background-color: #0b0f19;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             min-height: 100vh;
-            background-color: #f8fafc;
+        }
+
+        /* Hide scrollbars for smooth app experience */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .leaflet-container {
+            border-radius: 1.25rem;
+            z-index: 1;
+        }
+
+        /* Smart Phone Frame Simulation */
+        .phone-frame {
+            width: 100%;
+            max-width: 425px;
+            height: 100vh;
+            max-height: 890px;
+            background: #ffffff;
+            border-radius: 0px;
             position: relative;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        @media (min-width: 481px) {
-            body { background-color: #e2e8f0; display: flex; justify-content: center; align-items: center; }
-            .mobile-frame { height: 90vh; border-radius: 40px; overflow: hidden; border: 8px solid #1e293b; }
+
+        @media (min-width: 640px) {
+            .phone-frame {
+                height: 860px;
+                border-radius: 48px;
+                border: 10px solid #1e293b;
+            }
         }
-        #map, #post-map { width: 100%; height: 250px; border-radius: 12px; z-index: 1; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .dynamic-island {
+            width: 110px;
+            height: 26px;
+            background-color: #000000;
+            border-radius: 20px;
+            position: absolute;
+            top: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+        }
+
+        .camera-lens {
+            width: 9px;
+            height: 9px;
+            background-color: #0f172a;
+            border-radius: 50%;
+            border: 1px solid #334155;
+        }
+
+        /* Pulse animations for emergency status */
+        @keyframes sosPulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .sos-badge-pulse {
+            animation: sosPulse 1.8s infinite;
+        }
+
+        /* Custom Leaflet Map Pin */
+        .custom-sos-marker {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
     </style>
 </head>
-<body class="font-sans antialiased text-slate-800">
+<body class="bg-slate-950 min-h-screen flex items-center justify-center p-0 sm:p-4">
 
-    <div class="mobile-frame flex flex-col">
-        <!-- Status Bar -->
-        <div class="bg-emerald-600 text-white px-6 py-2 flex justify-between items-center text-xs font-semibold">
-            <span>9:41</span>
-            <div class="flex space-x-1.5 items-center">
-                <i class="fa-solid fa-signal"></i>
-                <i class="fa-solid fa-wifi"></i>
-                <i class="fa-solid fa-battery-full text-sm"></i>
+    <!-- SMARTPHONE FRAME CONTAINER -->
+    <div class="phone-frame">
+
+        <!-- iPhone Dynamic Island (Desktop Preview) -->
+        <div class="dynamic-island hidden sm:flex">
+            <div class="camera-lens"></div>
+        </div>
+
+        <!-- APP TOP STATUS BAR -->
+        <div class="pt-2 px-6 pb-1 bg-white/95 backdrop-blur-md flex justify-between items-center text-xs font-bold text-slate-800 z-40 select-none border-b border-slate-50">
+            <span id="current-time">09:41</span>
+            <div class="flex items-center gap-1.5 text-xs">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <i data-lucide="signal" class="w-3.5 h-3.5"></i>
+                <i data-lucide="battery-charging" class="w-4 h-4 text-emerald-600"></i>
             </div>
         </div>
 
-        <!-- App Header -->
-        <header class="bg-emerald-600 text-white px-4 py-3 flex justify-between items-center shadow-md">
-            <div class="flex items-center space-x-2">
-                <div class="bg-white text-emerald-600 p-2 rounded-full font-bold text-lg w-9 h-9 flex items-center justify-center shadow">
-                    🐾
+        <!-- APP HEADER BAR -->
+        <header class="px-4 py-2.5 bg-white border-b border-slate-100 flex items-center justify-between z-30 shadow-xs">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-500 to-amber-400 flex items-center justify-center text-white shadow-md shadow-brand-500/30">
+                    <i data-lucide="paw-print" class="w-4 h-4"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg leading-tight">Rescue Paws</h1>
-                    <p class="text-xs text-emerald-100">Cứu hộ & Bảo vệ Thú Cưng</p>
+                    <h1 class="font-black text-base tracking-tight text-slate-900 leading-none">Rescue Paws</h1>
+                    <span class="text-[9px] font-bold text-brand-600 tracking-wider uppercase">Mạng Lưới Cứu Hộ 24/7</span>
                 </div>
             </div>
-            <button onclick="alert('Thông báo: Bạn không có thông báo mới nào!')" class="relative text-white p-2">
-                <i class="fa-regular fa-bell text-xl"></i>
-                <span class="absolute top-1 right-1 bg-red-500 w-2.5 h-2.5 rounded-full border border-white"></span>
-            </button>
+
+            <div class="flex items-center gap-1.5">
+                <button onclick="switchTab('map')" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 active:scale-95 transition-transform" title="Bản đồ">
+                    <i data-lucide="map-pin" class="w-4 h-4"></i>
+                </button>
+                <button onclick="toggleNotificationModal()" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 relative active:scale-95 transition-transform" title="Thông báo">
+                    <i data-lucide="bell" class="w-4 h-4"></i>
+                    <span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                    <span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500"></span>
+                </button>
+            </div>
         </header>
 
-        <!-- Main Content Area -->
-        <main class="flex-1 overflow-y-auto pb-20 hide-scrollbar" id="main-content">
-            
-            <!-- TAB 1: BẢNG TIN -->
-            <section id="tab-feed" class="p-4 space-y-4">
-                <!-- Bộ lọc -->
-                <div class="flex space-x-2 overflow-x-auto hide-scrollbar pb-1">
-                    <button onclick="filterPosts('all')" class="filter-btn px-4 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-medium whitespace-nowrap shadow-sm">Tất cả</button>
-                    <button onclick="filterPosts('sos')" class="filter-btn px-4 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 text-xs font-medium whitespace-nowrap">🚨 Cấp cứu SOS</button>
-                    <button onclick="filterPosts('in_progress')" class="filter-btn px-4 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 text-xs font-medium whitespace-nowrap">🟡 Đang xử lý</button>
-                    <button onclick="filterPosts('safe')" class="filter-btn px-4 py-1.5 rounded-full bg-white text-slate-600 border border-slate-200 text-xs font-medium whitespace-nowrap">🟢 Đã an toàn</button>
+        <!-- MAIN SCROLLABLE APP CONTENT -->
+        <main class="flex-1 overflow-y-auto no-scrollbar bg-slate-50 relative pb-20">
+
+            <!-- TAB 1: FEED / BẢNG TIN CỨU HỘ -->
+            <section id="app-tab-feed" class="app-tab space-y-3 p-3">
+                <!-- Filter Chips Carousel -->
+                <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                    <button onclick="filterFeed('all', this)" class="filter-chip bg-slate-900 text-white px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-xs">Tất cả</button>
+                    <button onclick="filterFeed('SOS', this)" class="filter-chip bg-white border border-red-200 text-red-600 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1">
+                        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 🚨 SOS Khẩn cấp
+                    </button>
+                    <button onclick="filterFeed('near', this)" class="filter-chip bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap">📍 Gần tôi (&lt;5km)</button>
+                    <button onclick="filterFeed('fund', this)" class="filter-chip bg-white border border-amber-200 text-amber-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap">🏥 Cần viện phí</button>
+                    <button onclick="filterFeed('Chó', this)" class="filter-chip bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap">🐶 Chó</button>
+                    <button onclick="filterFeed('Mèo', this)" class="filter-chip bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap">🐱 Mèo</button>
                 </div>
 
-                <!-- Danh sách bài đăng -->
-                <div id="posts-container" class="space-y-4">
-                    <!-- Render bằng JS từ Firebase -->
+                <!-- Feed Posts Container -->
+                <div id="feed-list" class="space-y-3">
+                    <!-- Dynamic Post Cards Rendered by JS -->
                 </div>
             </section>
 
-            <!-- TAB 2: BẢN ĐỒ -->
-            <section id="tab-map" class="p-4 space-y-3 hidden">
-                <div class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100">
-                    <div class="flex justify-between items-center mb-2">
-                        <h2 class="font-bold text-slate-800 text-sm">📍 Bản đồ ca cứu hộ quanh đây</h2>
-                        <button onclick="locateUser()" class="text-xs bg-emerald-50 text-emerald-600 font-semibold px-2.5 py-1 rounded-lg border border-emerald-200">
-                            <i class="fa-solid fa-location-crosshairs"></i> Vị trí của tôi
-                        </button>
+            <!-- TAB 2: MAP / BẢN ĐỒ CỨU HỘ REAL-TIME -->
+            <section id="app-tab-map" class="app-tab hidden h-full relative">
+                <div id="app-full-map" class="w-full h-full min-h-[580px]"></div>
+                <!-- Map Header Overlay -->
+                <div class="absolute top-3 left-3 right-3 bg-white/95 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-slate-100 z-20 flex items-center justify-between">
+                    <div>
+                        <p class="font-black text-xs text-slate-800 flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping inline-block"></span>
+                            Bản Đồ Cứu Hộ Thời Gian Thực
+                        </p>
+                        <p class="text-[10px] text-slate-500">Chạm vào Marker để xem ca khẩn cấp</p>
                     </div>
-                    <div id="map"></div>
+                    <button onclick="locateUserOnMap()" class="bg-brand-500 text-white w-8 h-8 rounded-xl flex items-center justify-center shadow-md shadow-brand-500/30 active:scale-95 transition-transform" title="GPS Của Tôi">
+                        <i data-lucide="crosshair" class="w-4 h-4"></i>
+                    </button>
                 </div>
             </section>
 
-            <!-- TAB 3: ĐĂNG BÀI SOS -->
-            <section id="tab-post" class="p-4 space-y-4 hidden">
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <h2 class="font-bold text-slate-800 text-base mb-3 flex items-center gap-2">
-                        <span class="bg-red-100 text-red-600 p-1.5 rounded-lg text-sm">🚨</span> Tạo Ca Cứu Hộ Mới
-                    </h2>
-                    <form id="sos-form" onsubmit="handleCreatePost(event)" class="space-y-3">
+            <!-- TAB 3: POST / ĐĂNG BÀI CỨU HỘ SOS -->
+            <section id="app-tab-post" class="app-tab hidden p-3">
+                <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 space-y-3.5">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                        <h2 class="font-black text-sm text-slate-800 flex items-center gap-2">
+                            <i data-lucide="siren" class="w-4 h-4 text-brand-500"></i> Báo Cáo Ca Cứu Hộ Mới
+                        </h2>
+                        <span class="text-[10px] bg-red-50 text-red-600 font-bold px-2.5 py-0.5 rounded-full">Trực tiếp SOS</span>
+                    </div>
+
+                    <form onsubmit="handleMobilePostSubmit(event)" class="space-y-3">
+                        <!-- Upload Image Preview (Multiple images supported) -->
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tiêu đề sự việc</label>
-                            <input type="text" id="post-title" required placeholder="VD: Chó bị thương ở lề đường..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">1. Tải ảnh thực tế (Tối đa 3 ảnh) *</label>
+                            <div class="border-2 border-dashed border-slate-200 rounded-2xl p-3 text-center bg-slate-50 relative hover:bg-slate-100/80 transition-colors">
+                                <input type="file" id="app-post-image" accept="image/*" multiple onchange="previewAppMultipleImages(event)" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" required>
+                                <div id="app-upload-placeholder" class="py-2">
+                                    <i data-lucide="camera" class="w-7 h-7 text-slate-400 mx-auto mb-1"></i>
+                                    <p class="text-xs text-slate-700 font-bold">Chạm để chụp hoặc chọn ảnh</p>
+                                    <p class="text-[10px] text-slate-400">Hình ảnh rõ vết thương giúp cứu hộ nhanh hơn</p>
+                                </div>
+                                <div id="app-image-preview-box" class="hidden grid grid-cols-3 gap-2">
+                                    <!-- Dynamic previews inserted here -->
+                                </div>
+                            </div>
                         </div>
+
+                        <!-- Title -->
+                        <div>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">2. Tiêu đề ngắn gọn *</label>
+                            <input type="text" id="app-post-title" required placeholder="VD: Mèo con bị tai nạn kẹt gầm xe..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none">
+                        </div>
+
+                        <!-- Pet Type & Emergency Status Level -->
                         <div class="grid grid-cols-2 gap-2">
                             <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Loại thú cưng</label>
-                                <select id="post-pet-type" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white">
-                                    <option value="dog">🐶 Chó</option>
-                                    <option value="cat">🐱 Mèo</option>
-                                    <option value="other">🐾 Khác</option>
+                                <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Thú cưng</label>
+                                <select id="app-post-pet" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-brand-500 outline-none font-semibold">
+                                    <option value="Chó">🐶 Chó</option>
+                                    <option value="Mèo">🐱 Mèo</option>
+                                    <option value="Khác">🐾 Khác</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-600 mb-1">Trạng thái khẩn cấp</label>
-                                <select id="post-status" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white">
-                                    <option value="sos">🚨 Cấp cứu SOS</option>
-                                    <option value="in_progress">🟡 Đang xử lý</option>
-                                    <option value="safe">🟢 Đã an toàn</option>
+                                <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">Cấp độ khẩn cấp *</label>
+                                <select id="app-post-status" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-brand-500 outline-none font-bold text-red-600">
+                                    <option value="SOS Khẩn cấp">🚨 Cấp cứu SOS (Nguy hiểm)</option>
+                                    <option value="Đang xử lý">🟡 Đang theo dõi / Tiếp cận</option>
+                                    <option value="Cần nhận nuôi">🟢 Cần tìm chủ nhận nuôi</option>
                                 </select>
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Hình ảnh thực tế (Link ảnh)</label>
-                            <input type="url" id="post-image" placeholder="Dán link ảnh từ Unsplash / Imgur..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl">
+
+                        <!-- Fundraising toggle -->
+                        <div class="bg-amber-50 p-2.5 rounded-2xl border border-amber-200/80 space-y-2">
+                            <label class="flex items-center justify-between text-xs font-bold text-amber-900 cursor-pointer">
+                                <span class="flex items-center gap-1.5"><i data-lucide="heart-handshake" class="w-4 h-4 text-amber-600"></i> Cần quyên góp viện phí thú y?</span>
+                                <input type="checkbox" id="app-post-has-fund" onchange="toggleFundInput(this)" class="w-4 h-4 accent-brand-500">
+                            </label>
+                            <div id="fund-target-box" class="hidden">
+                                <input type="number" id="app-post-fund-target" placeholder="Số tiền mục tiêu (VD: 2500000)" class="w-full px-3 py-1.5 text-xs rounded-xl border border-amber-300 bg-white focus:ring-1 focus:ring-brand-500 outline-none">
+                            </div>
                         </div>
+
+                        <!-- Location & Pick Map -->
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Chọn vị trí xảy ra (Chạm lên bản đồ)</label>
-                            <div id="post-map" class="mb-2"></div>
-                            <input type="text" id="post-location-name" required placeholder="Địa chỉ tự động bắt..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-slate-50" readonly>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="block text-[10px] font-extrabold text-slate-500 uppercase">3. Chọn vị trí trên bản đồ *</label>
+                                <button type="button" onclick="getGPSLocationForPost()" class="text-[10px] text-brand-600 font-bold flex items-center gap-1 active:scale-95">
+                                    <i data-lucide="locate" class="w-3 h-3"></i> Lấy vị trí GPS
+                                </button>
+                            </div>
+                            <input type="text" id="app-post-location-text" required placeholder="Tên đường, phường/xã, quận/huyện..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none mb-1.5">
+                            
+                            <div class="h-32 rounded-2xl overflow-hidden border border-slate-200 relative shadow-inner">
+                                <div id="post-picker-map" class="w-full h-full"></div>
+                                <span class="absolute bottom-1 right-1 z-10 bg-slate-900/80 text-white text-[9px] px-2 py-0.5 rounded-lg backdrop-blur-xs">Chạm vào map để chọn điểm</span>
+                            </div>
                         </div>
+
+                        <!-- Phone & Details -->
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Số điện thoại liên hệ</label>
-                            <input type="tel" id="post-phone" required placeholder="VD: 0901234567" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl">
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">4. SĐT liên hệ khẩn cấp *</label>
+                            <input type="tel" id="app-post-phone" required placeholder="VD: 0901234567" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none">
                         </div>
+
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Mô tả chi tiết tình trạng</label>
-                            <textarea id="post-desc" rows="3" required placeholder="Tình trạng bé hiện tại, cần hỗ trợ gì..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl"></textarea>
+                            <label class="block text-[10px] font-extrabold text-slate-500 uppercase mb-1">5. Mô tả tình trạng chi tiết</label>
+                            <textarea id="app-post-desc" rows="2" required placeholder="Mô tả vết thương, đặc điểm nhận dạng, hoàn cảnh bé bị nạn..." class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 outline-none"></textarea>
                         </div>
-                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition text-sm">
-                            Đăng Ca Cứu Hộ Lên Cloud
+
+                        <!-- Submit Button -->
+                        <button type="submit" class="w-full bg-gradient-to-r from-red-500 via-brand-500 to-amber-500 hover:from-red-600 hover:to-amber-600 text-white font-extrabold py-3 rounded-xl shadow-lg shadow-brand-500/30 text-xs uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center gap-1.5">
+                            <i data-lucide="send" class="w-4 h-4"></i> Phát Tín Hiệu SOS Ngay
                         </button>
                     </form>
                 </div>
             </section>
 
-            <!-- TAB 4: BẢNG XẾP HẠNG -->
-            <section id="tab-leaderboard" class="p-4 space-y-3 hidden">
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                    <h2 class="font-bold text-slate-800 text-base mb-3">🏆 Bảng Xếp Hạng Tình Nguyện Viên</h2>
-                    <div class="space-y-3">
-                        <div class="flex items-center justify-between p-3 bg-amber-50 rounded-xl border border-amber-200">
-                            <div class="flex items-center space-x-3">
-                                <span class="font-bold text-amber-600 text-lg">#1</span>
-                                <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100" class="w-10 h-10 rounded-full object-cover">
-                                <div>
-                                    <h4 class="font-bold text-sm text-slate-800">Nguyễn Văn A</h4>
-                                    <p class="text-xs text-slate-500">28 ca cứu hộ thành công</p>
-                                </div>
-                            </div>
-                            <span class="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">1,450 pts</span>
-                        </div>
-                        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                            <div class="flex items-center space-x-3">
-                                <span class="font-bold text-slate-600 text-lg">#2</span>
-                                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100" class="w-10 h-10 rounded-full object-cover">
-                                <div>
-                                    <h4 class="font-bold text-sm text-slate-800">Trần Thị B</h4>
-                                    <p class="text-xs text-slate-500">19 ca cứu hộ thành công</p>
-                                </div>
-                            </div>
-                            <span class="bg-slate-400 text-white text-xs font-bold px-2.5 py-1 rounded-full">980 pts</span>
-                        </div>
+            <!-- TAB 4: LEADERBOARD / VINH DANH THÀNH VIÊN -->
+            <section id="app-tab-leaderboard" class="app-tab hidden p-3 space-y-3">
+                <!-- Top Header Banner -->
+                <div class="bg-gradient-to-br from-amber-500 via-brand-500 to-brand-600 rounded-3xl p-4 text-white shadow-md relative overflow-hidden">
+                    <div class="relative z-10">
+                        <span class="bg-white/20 text-white text-[9px] px-2.5 py-0.5 rounded-full font-extrabold uppercase tracking-wider">Tháng 10/2026</span>
+                        <h2 class="text-lg font-black mt-1">Bảng Vinh Danh Anh Hùng</h2>
+                        <p class="text-[11px] text-amber-100">Cùng chung tay giải cứu & bảo vệ hàng ngàn chó mèo lang thang.</p>
+                    </div>
+                    <i data-lucide="trophy" class="w-20 h-20 absolute -right-3 -bottom-3 text-white/20"></i>
+                </div>
+
+                <!-- Top 3 Podium Cards -->
+                <div id="app-podium" class="grid grid-cols-3 gap-2 pt-2 items-end">
+                    <!-- Dynamic Podium Rendered by JS -->
+                </div>
+
+                <!-- Rankings List -->
+                <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-xs">
+                    <div class="px-3 py-2.5 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                        <span class="text-xs font-black text-slate-800">Top Tình Nguyện Viên</span>
+                        <span class="text-[10px] font-bold text-brand-600">Hero Points 🔥</span>
+                    </div>
+                    <div id="app-leaderboard-list" class="divide-y divide-slate-100">
+                        <!-- Dynamic Leaderboard Items -->
                     </div>
                 </div>
             </section>
 
-            <!-- TAB 5: CÁ NHÂN / HOTLINE -->
-            <section id="tab-profile" class="p-4 space-y-3 hidden">
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center space-y-3">
-                    <img src="https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150" class="w-20 h-20 rounded-full mx-auto object-cover shadow-md">
-                    <div>
-                        <h2 class="font-bold text-base text-slate-800">Tình Nguyện Viên</h2>
-                        <p class="text-xs text-slate-500">Thành viên mạng lưới Rescue Paws</p>
+            <!-- TAB 5: PROFILE & EMERGENCY HUB / CÁ NHÂN & TRẠM CỨU HỘ -->
+            <section id="app-tab-profile" class="app-tab hidden p-3 space-y-3">
+                <!-- User Profile Summary Card -->
+                <div class="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm text-center relative">
+                    <div class="relative inline-block mb-2">
+                        <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80" class="w-16 h-16 rounded-full object-cover border-4 border-brand-100 mx-auto shadow-md">
+                        <span class="absolute bottom-0 right-0 bg-brand-500 text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white"><i data-lucide="shield" class="w-3 h-3"></i></span>
                     </div>
-                    <div class="pt-2 border-t border-slate-100 text-left space-y-2">
-                        <div class="flex justify-between text-sm py-1">
-                            <span class="text-slate-600">Trạm cứu hộ trực tuyến:</span>
-                            <span class="font-semibold text-emerald-600">Hoạt động 24/7</span>
+                    <h3 class="font-extrabold text-sm text-slate-800">Nguyễn Minh Tâm</h3>
+                    <p class="text-[11px] text-brand-600 font-bold mb-3 flex items-center justify-center gap-1"><i data-lucide="award" class="w-3.5 h-3.5"></i> Hiệp Sĩ Cứu Hộ Cấp 3</p>
+                    
+                    <!-- Quick User Stats -->
+                    <div class="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-100 text-center">
+                        <div>
+                            <span class="block text-sm font-black text-slate-800">12</span>
+                            <span class="text-[9px] text-slate-400 font-bold uppercase">Ca đã cứu</span>
                         </div>
-                        <div class="flex justify-between text-sm py-1">
-                            <span class="text-slate-600">Hotline khẩn cấp:</span>
-                            <a href="tel:19001000" class="font-semibold text-red-600">1900 1000</a>
+                        <div>
+                            <span class="block text-sm font-black text-slate-800">450</span>
+                            <span class="text-[9px] text-slate-400 font-bold uppercase">Điểm Hero</span>
                         </div>
+                        <div>
+                            <span class="block text-sm font-black text-slate-800">Top 4</span>
+                            <span class="text-[9px] text-slate-400 font-bold uppercase">Xếp hạng</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Settings Radius -->
+                <div class="bg-white rounded-3xl p-3.5 border border-slate-100 shadow-sm space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i data-lucide="radius" class="w-4 h-4 text-brand-500"></i> Bán kính thông báo SOS</span>
+                        <span id="radius-value-text" class="text-xs font-black text-brand-600">5 km</span>
+                    </div>
+                    <input type="range" min="1" max="20" value="5" oninput="updateRadius(this.value)" class="w-full accent-brand-500 cursor-pointer">
+                    <p class="text-[10px] text-slate-400">Bạn sẽ nhận chuông báo tức thì khi có ca SOS trong bán kính này.</p>
+                </div>
+
+                <!-- Emergency Shelters Network Section -->
+                <div class="bg-white rounded-3xl p-3.5 border border-slate-100 shadow-sm space-y-2.5">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                        <h4 class="font-black text-xs text-slate-800 flex items-center gap-1.5">
+                            <i data-lucide="hospital" class="w-4 h-4 text-red-500"></i> Trạm Cứu Hộ Uy Tín 24/7
+                        </h4>
+                        <span class="text-[9px] bg-red-100 text-red-600 font-bold px-2 py-0.5 rounded-full">Hotline</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <!-- Shelter Item 1 -->
+                        <div class="p-2.5 bg-slate-50 rounded-2xl flex items-center justify-between border border-slate-100">
+                            <div>
+                                <h5 class="font-bold text-xs text-slate-800">Trạm Cứu Hộ Sài Gòn Time</h5>
+                                <p class="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5"><i data-lucide="map-pin" class="w-3 h-3 text-brand-500"></i> Q.7, TP. Hồ Chí Minh</p>
+                            </div>
+                            <a href="tel:0912345678" class="bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shadow-sm active:scale-95">
+                                <i data-lucide="phone" class="w-3 h-3"></i> Gọi
+                            </a>
+                        </div>
+                        <!-- Shelter Item 2 -->
+                        <div class="p-2.5 bg-slate-50 rounded-2xl flex items-center justify-between border border-slate-100">
+                            <div>
+                                <h5 class="font-bold text-xs text-slate-800">Trạm Cứu Hộ Yêu Động Vật</h5>
+                                <p class="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5"><i data-lucide="map-pin" class="w-3 h-3 text-brand-500"></i> Bình Thạnh, TP.HCM</p>
+                            </div>
+                            <a href="tel:0988776655" class="bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shadow-sm active:scale-95">
+                                <i data-lucide="phone" class="w-3 h-3"></i> Gọi
+                            </a>
+                        </div>
+                        <!-- Shelter Item 3 -->
+                        <div class="p-2.5 bg-slate-50 rounded-2xl flex items-center justify-between border border-slate-100">
+                            <div>
+                                <h5 class="font-bold text-xs text-slate-800">Hội Cứu Trợ Động Vật Hà Nội</h5>
+                                <p class="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5"><i data-lucide="map-pin" class="w-3 h-3 text-brand-500"></i> Q. Cầu Giấy, Hà Nội</p>
+                            </div>
+                            <a href="tel:0909112233" class="bg-emerald-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shadow-sm active:scale-95">
+                                <i data-lucide="phone" class="w-3 h-3"></i> Gọi
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings / Navigation -->
+                <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-xs divide-y divide-slate-100">
+                    <div class="p-3 flex items-center justify-between text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+                        <span class="flex items-center gap-2.5"><i data-lucide="history" class="w-4 h-4 text-brand-500"></i> Lịch sử bài viết đã đăng</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                    </div>
+                    <div class="p-3 flex items-center justify-between text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+                        <span class="flex items-center gap-2.5"><i data-lucide="book-open" class="w-4 h-4 text-emerald-500"></i> Cẩm nang sơ cứu chó mèo tai nạn</span>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
                     </div>
                 </div>
             </section>
 
         </main>
 
-        <!-- Bottom Navigation Bar -->
-        <nav class="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around items-center py-2 px-1 z-50 shadow-lg">
-            <button onclick="switchTab('feed')" class="nav-item flex flex-col items-center text-emerald-600" data-target="feed">
-                <i class="fa-solid fa-house text-lg"></i>
-                <span class="text-[10px] mt-1 font-medium">Bảng tin</span>
+        <!-- BOTTOM NAVIGATION BAR (5 TABS) -->
+        <nav class="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 py-1.5 px-3 flex justify-around items-center z-40 select-none shadow-lg">
+            <!-- Feed Tab -->
+            <button onclick="switchTab('feed')" id="btn-tab-feed" class="nav-tab-btn flex flex-col items-center gap-0.5 text-brand-600">
+                <i data-lucide="newspaper" class="w-5 h-5"></i>
+                <span class="text-[9px] font-bold">Bảng Tin</span>
             </button>
-            <button onclick="switchTab('map')" class="nav-item flex flex-col items-center text-slate-400" data-target="map">
-                <i class="fa-solid fa-map-location-dot text-lg"></i>
-                <span class="text-[10px] mt-1 font-medium">Bản đồ</span>
+
+            <!-- Map Tab -->
+            <button onclick="switchTab('map')" id="btn-tab-map" class="nav-tab-btn flex flex-col items-center gap-0.5 text-slate-400">
+                <i data-lucide="map" class="w-5 h-5"></i>
+                <span class="text-[9px] font-bold">Bản Đồ</span>
             </button>
-            <button onclick="switchTab('post')" class="flex flex-col items-center -top-4 relative">
-                <div class="bg-emerald-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg text-xl hover:bg-emerald-700 transition">
-                    <i class="fa-solid fa-plus"></i>
+
+            <!-- Action Post Button (Center Float) -->
+            <button onclick="switchTab('post')" id="btn-tab-post" class="flex flex-col items-center -mt-5">
+                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-red-500 via-brand-500 to-amber-500 text-white flex items-center justify-center shadow-lg shadow-brand-500/40 border-4 border-white active:scale-90 transition-transform">
+                    <i data-lucide="plus" class="w-6 h-6"></i>
                 </div>
+                <span class="text-[9px] font-extrabold text-brand-600 mt-0.5">Đăng SOS</span>
             </button>
-            <button onclick="switchTab('leaderboard')" class="nav-item flex flex-col items-center text-slate-400" data-target="leaderboard">
-                <i class="fa-solid fa-trophy text-lg"></i>
-                <span class="text-[10px] mt-1 font-medium">Vinh danh</span>
+
+            <!-- Leaderboard Tab -->
+            <button onclick="switchTab('leaderboard')" id="btn-tab-leaderboard" class="nav-tab-btn flex flex-col items-center gap-0.5 text-slate-400">
+                <i data-lucide="trophy" class="w-5 h-5"></i>
+                <span class="text-[9px] font-bold">Vinh Danh</span>
             </button>
-            <button onclick="switchTab('profile')" class="nav-item flex flex-col items-center text-slate-400" data-target="profile">
-                <i class="fa-solid fa-user text-lg"></i>
-                <span class="text-[10px] mt-1 font-medium">Cá nhân</span>
+
+            <!-- Profile Tab -->
+            <button onclick="switchTab('profile')" id="btn-tab-profile" class="nav-tab-btn flex flex-col items-center gap-0.5 text-slate-400">
+                <i data-lucide="user" class="w-5 h-5"></i>
+                <span class="text-[9px] font-bold">Cá Nhân</span>
             </button>
         </nav>
+
+        <!-- Home Indicator Bar (iOS Style) -->
+        <div class="absolute bottom-1 left-1/2 -translate-x-1/2 w-28 h-1 bg-slate-300 rounded-full z-50 pointer-events-none"></div>
+
     </div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <!-- Firebase SDK (Modular) -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addTimestamp, getDocs, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    <!-- MODAL NOTIFICATION MOCKUP -->
+    <div id="notification-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-4 w-full max-w-xs shadow-2xl space-y-3">
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                <h3 class="font-extrabold text-xs text-slate-800 flex items-center gap-1.5"><i data-lucide="bell" class="w-4 h-4 text-brand-500"></i> Thông Báo SOS Gần Bạn</h3>
+                <button onclick="toggleNotificationModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="space-y-2">
+                <div class="bg-red-50 p-2.5 rounded-2xl border border-red-100 text-xs">
+                    <p class="font-bold text-red-600 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Ca SOS mới cách bạn 1.2km!</p>
+                    <p class="text-[10px] text-slate-600 mt-0.5">Một bé Poodle gãy chân cần hỗ trợ đưa đến phòng khám tại Q.3.</p>
+                    <span class="text-[9px] text-slate-400 block mt-1">2 phút trước</span>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        // Cấu hình Firebase của bạn
-        const firebaseConfig = {
-            apiKey: "AIzaSyCE8ii7SFEY9-FcggrdFm4CI0MYEWEOQiHY",
-            authDomain: "rescue-paws-619b7.firebaseapp.com",
-            databaseURL: "https://rescue-paws-619b7-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "rescue-paws-619b7",
-            storageBucket: "rescue-paws-619b7.firebasestorage.app",
-            messagingSenderId: "816195406002",
-            appId: "1:816195406002:web:9bf58506cf7a0ff3c8e1ab",
-            measurementId: "G-M0PJT2FETQ"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        window.db = db;
-        window.collection = collection;
-        window.addDoc = addDoc;
-        window.getDocs = getDocs;
-        window.onSnapshot = onSnapshot;
-        window.query = query;
-        window.orderBy = orderBy;
-
-        // Khởi động dữ liệu real-time từ Firestore ngay khi load trang
-        loadPostsFromFirebase();
-    </script>
-
+    <!-- JAVASCRIPT APPLICATION LOGIC -->
     <script>
-        let map, postMap, currentMarker, postMarker;
-        let selectedLat = 10.7769, selectedLng = 106.7009;
-        let allPosts = [];
-        let currentFilter = 'all';
+        // --- COMPREHENSIVE MOCK DATA ---
+        const initialPosts = [
+            {
+                id: 1,
+                author: "Nguyễn Văn Hùng",
+                avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+                title: "Bé Corgi lai bị xe tông vỡ xương chậu cần viện phí mổ gấp!",
+                petType: "Chó",
+                status: "SOS Khẩn cấp",
+                images: [
+                    "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=800&q=80",
+                    "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=800&q=80"
+                ],
+                phone: "0908123456",
+                desc: "Bé bị tai nạn tại vòng xoay Dân Chủ. Đã được đưa vào Thú Y PetCare nhưng chi phí phẫu thuật mổ xương quá cao. Cần cộng đồng chung tay giúp bé!",
+                location: "Ngã 6 Dân Chủ, Quận 3, TP.HCM",
+                lat: 10.7781,
+                lng: 106.6826,
+                time: "10 phút trước",
+                distance: "1.2 km",
+                likes: 48,
+                liked: false,
+                hasFund: true,
+                raised: 1850000,
+                target: 3500000,
+                comments: [
+                    { name: "Phạm Quốc Bảo", text: "Mình vừa chuyển 200k ủng hộ bé, mong bé mau khỏe!", time: "5 phút trước" }
+                ],
+                timeline: [
+                    { status: "SOS Khẩn cấp", note: "Phát hiện ca chấn thương", time: "10 phút trước" },
+                    { status: "Đang xử lý", note: "Đã đưa vào phòng xét nghiệm X-Quang", time: "2 phút trước" }
+                ]
+            },
+            {
+                id: 2,
+                author: "Trạm Rescue Saigon",
+                avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80",
+                title: "Đàn 4 bé mèo con sũng nước mưa trong bãi rác",
+                petType: "Mèo",
+                status: "Đang xử lý",
+                images: [
+                    "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=800&q=80"
+                ],
+                phone: "0912999888",
+                desc: "Các bé mèo con mới mở mắt bị bỏ rơi dưới mưa. Tình nguyện viên trạm đang tiếp quản ủ ấm và cho uống sữa.",
+                location: "Công viên Thống Nhất, Hà Nội",
+                lat: 21.0168,
+                lng: 105.8458,
+                time: "1 giờ trước",
+                distance: "3.5 km",
+                likes: 92,
+                liked: true,
+                hasFund: false,
+                comments: [
+                    { name: "Lan Anh", text: "Cảm ơn trạm đã kịp thời cứu các bé!", time: "20 phút trước" }
+                ],
+                timeline: [
+                    { status: "SOS Khẩn cấp", note: "Dân xung quanh báo tin", time: "1 giờ trước" },
+                    { status: "Đang xử lý", note: "Tình nguyện viên đã đón về trạm", time: "30 phút trước" }
+                ]
+            },
+            {
+                id: 3,
+                author: "Trần Thị Hoa",
+                avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
+                title: "Bé Golden bị lạc chủ đã tìm thấy chủ cũ an toàn!",
+                petType: "Chó",
+                status: "Cần nhận nuôi",
+                images: [
+                    "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=800&q=80"
+                ],
+                phone: "0988112233",
+                desc: "Chủ bé đã liên hệ và xuất trình giấy tiêm phòng nhận lại bé. Cảm ơn ứng dụng Rescue Paws đã lan tỏa thông tin cực nhanh!",
+                location: "Quận Sơn Trà, Đà Nẵng",
+                lat: 16.0833,
+                lng: 108.2333,
+                time: "4 giờ trước",
+                distance: "6.8 km",
+                likes: 140,
+                liked: false,
+                hasFund: false,
+                comments: [],
+                timeline: [
+                    { status: "Cần nhận nuôi", note: "Đã bàn giao bé về cho gia đình", time: "1 giờ trước" }
+                ]
+            }
+        ];
 
+        const leaderboardData = [
+            { rank: 1, name: "Phạm Quốc Bảo", title: "Hiệp Sĩ Cứu Hộ", rescued: 42, points: 1540, avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80" },
+            { rank: 2, name: "Trạm Rescue Saigon", title: "Trái Tim Vàng", rescued: 38, points: 1320, avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=120&q=80" },
+            { rank: 3, name: "Lê Thị Mai", title: "Thiên Thần Mèo", rescued: 29, points: 980, avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80" },
+            { rank: 4, name: "Nguyễn Minh Tâm", title: "Bác Sĩ Yêu Thương", rescued: 12, points: 450, avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80" },
+            { rank: 5, name: "Đội Y Tế PetCare", title: "Tình Nguyện Tích Cực", rescued: 9, points: 310, avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=120&q=80" }
+        ];
+
+        // --- GLOBAL APP STATE ---
+        let appPosts = [...initialPosts];
+        let postPickerLocation = { lat: 10.7769, lng: 106.7009 };
+        let appFullMap = null;
+        let pickerMap = null;
+        let pickerMarker = null;
+        let miniMaps = {};
+
+        // --- APP INITIALIZATION ---
+        window.addEventListener('DOMContentLoaded', () => {
+            updateClock();
+            setInterval(updateClock, 30000);
+            renderFeed(appPosts);
+            renderAppLeaderboard();
+            lucide.createIcons();
+        });
+
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const mins = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('current-time').innerText = `${hours}:${mins}`;
+        }
+
+        // --- TAB SWITCHING LOGIC ---
         function switchTab(tabId) {
-            ['feed', 'map', 'post', 'leaderboard', 'profile'].forEach(t => {
-                document.getElementById(`tab-${t}`).classList.add('hidden');
-            });
-            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            document.querySelectorAll('.app-tab').forEach(tab => tab.classList.add('hidden'));
+            
+            const activeTab = document.getElementById(`app-tab-${tabId}`);
+            if (activeTab) activeTab.classList.remove('hidden');
 
-            document.querySelectorAll('.nav-item').forEach(btn => {
-                btn.classList.remove('text-emerald-600');
+            document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+                btn.classList.remove('text-brand-600');
                 btn.classList.add('text-slate-400');
-                if(btn.dataset.target === tabId) {
-                    btn.classList.remove('text-slate-400');
-                    btn.classList.add('text-emerald-600');
-                }
             });
-
-            if (tabId === 'map' && !map) {
-                setTimeout(initMap, 200);
-            } else if (tabId === 'map' && map) {
-                setTimeout(() => map.invalidateSize(), 200);
+            const activeBtn = document.getElementById(`btn-tab-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.add('text-brand-600');
+                activeBtn.classList.remove('text-slate-400');
             }
 
-            if (tabId === 'post' && !postMap) {
-                setTimeout(initPostMap, 200);
-            } else if (tabId === 'post' && postMap) {
-                setTimeout(() => postMap.invalidateSize(), 200);
+            if (tabId === 'map') {
+                setTimeout(initAppFullMap, 200);
+            } else if (tabId === 'post') {
+                setTimeout(initPickerMap, 200);
             }
         }
 
-        function initMap() {
-            map = L.map('map').setView([10.7769, 106.7009], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; OpenStreetMap'
-            }).addTo(map);
-            renderMapMarkers();
-        }
-
-        function initPostMap() {
-            postMap = L.map('post-map').setView([10.7769, 106.7009], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19
-            }).addTo(postMap);
-
-            postMarker = L.marker([10.7769, 106.7009], {draggable: true}).addTo(postMap);
-            document.getElementById('post-location-name').value = "TP. Hồ Chí Minh";
-
-            postMap.on('click', function(e) {
-                selectedLat = e.latlng.lat;
-                selectedLng = e.latlng.lng;
-                postMarker.setLatLng([selectedLat, selectedLng]);
-                document.getElementById('post-location-name').value = `Tọa độ: ${selectedLat.toFixed(4)}, ${selectedLng.toFixed(4)}`;
-            });
-
-            postMarker.on('dragend', function(e) {
-                let pos = postMarker.getLatLng();
-                selectedLat = pos.lat;
-                selectedLng = pos.lng;
-                document.getElementById('post-location-name').value = `Tọa độ: ${selectedLat.toFixed(4)}, ${selectedLng.toFixed(4)}`;
-            });
-        }
-
-        function locateUser() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(position => {
-                    let lat = position.coords.latitude;
-                    let lng = position.coords.longitude;
-                    if(map) {
-                        map.setView([lat, lng], 15);
-                        L.marker([lat, lng]).addTo(map).bindPopup("📍 Vị trí hiện tại của bạn").openPopup();
-                    }
-                }, () => {
-                    alert("Không thể lấy vị trí GPS của bạn!");
-                });
-            }
-        }
-
-        // Đọc dữ liệu Realtime từ Firebase Firestore
-        function loadPostsFromFirebase() {
-            if (!window.db) {
-                setTimeout(loadPostsFromFirebase, 500);
+        // --- RENDER FEED ITEMS ---
+        function renderFeed(posts) {
+            const container = document.getElementById('feed-list');
+            
+            if (posts.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs">Không có bài viết cứu hộ nào thỏa mãn bộ lọc.</div>`;
                 return;
             }
-            const q = window.query(window.collection(window.db, "rescue_posts"));
-            window.onSnapshot(q, (snapshot) => {
-                allPosts = [];
-                snapshot.forEach((doc) => {
-                    allPosts.push({ id: doc.id, ...doc.data() });
-                });
-                
-                // Dữ liệu mẫu mặc định nếu database trống
-                if(allPosts.length === 0) {
-                    allPosts = [
-                        {
-                            id: 'default-1',
-                            status: 'sos',
-                            title: 'Cần hỗ trợ gấp chú mèo bị thương ở chân',
-                            time: '10 phút trước',
-                            locationName: 'Quận 1, TP.HCM',
-                            lat: 10.7769,
-                            lng: 106.7009,
-                            author: 'Hoàng Lan',
-                            avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-                            images: ['https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600'],
-                            description: 'Bé mèo bị xe tông nhẹ ở góc đường, hiện đang sợ hãi không dám di chuyển.',
-                            phone: '0901234567'
-                        }
-                    ];
-                }
 
-                renderPosts();
-                renderMapMarkers();
-            });
-        }
-
-        function renderPosts() {
-            const container = document.getElementById('posts-container');
-            container.innerHTML = '';
-
-            let filtered = allPosts.filter(p => currentFilter === 'all' || p.status === currentFilter);
-
-            filtered.forEach(post => {
-                let badgeClass = post.status === 'sos' ? 'bg-red-100 text-red-600 border-red-200' :
-                                 post.status === 'in_progress' ? 'bg-amber-100 text-amber-600 border-amber-200' : 'bg-emerald-100 text-emerald-600 border-emerald-200';
-                let statusText = post.status === 'sos' ? '🚨 Cấp cứu SOS' : post.status === 'in_progress' ? '🟡 Đang xử lý' : '🟢 Đã an toàn';
-
-                let html = `
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div class="p-3 flex items-center justify-between">
-                            <div class="flex items-center space-x-2.5">
-                                <img src="${post.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}" class="w-9 h-9 rounded-full object-cover">
-                                <div>
-                                    <h3 class="font-bold text-xs text-slate-800">${post.author || 'Tình nguyện viên'}</h3>
-                                    <p class="text-[10px] text-slate-400">${post.time || 'Vừa xong'}</p>
-                                </div>
+            container.innerHTML = posts.map(post => `
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden" id="card-post-${post.id}">
+                    <!-- Author & Emergency Badge -->
+                    <div class="p-3 flex items-center justify-between border-b border-slate-50">
+                        <div class="flex items-center gap-2">
+                            <img src="${post.avatar}" class="w-8 h-8 rounded-full object-cover">
+                            <div>
+                                <h4 class="font-bold text-xs text-slate-800 leading-tight">${post.author}</h4>
+                                <p class="text-[9px] text-slate-400">${post.time} • <span class="text-brand-600 font-semibold">Cách ${post.distance}</span></p>
                             </div>
-                            <span class="text-[10px] font-semibold px-2.5 py-1 rounded-full border ${badgeClass}">${statusText}</span>
                         </div>
-                        ${post.images && post.images.length > 0 && post.images[0] ? `<img src="${post.images[0]}" class="w-full h-52 object-cover">` : ''}
-                        <div class="p-3 space-y-2">
-                            <h2 class="font-bold text-sm text-slate-800">${post.title}</h2>
-                            <p class="text-xs text-slate-600 leading-relaxed">${post.description}</p>
-                            <p class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-solid fa-location-dot text-emerald-600"></i> ${post.locationName}</p>
-                            <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
-                                <a href="tel:${post.phone}" class="bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
-                                    <i class="fa-solid fa-phone"></i> Gọi: ${post.phone}
-                                </a>
-                                <span class="text-xs text-slate-400">Rescue Paws</span>
+                        ${getStatusBadgeHTML(post.status)}
+                    </div>
+
+                    <!-- Post Body Info -->
+                    <div class="p-3">
+                        <h3 class="font-extrabold text-xs text-slate-900 mb-1 leading-snug">${post.title}</h3>
+                        <p class="text-[11px] text-slate-600 mb-2 leading-relaxed">${post.desc}</p>
+                        
+                        <div class="flex items-center gap-1 text-[10px] text-slate-500 font-semibold mb-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <i data-lucide="map-pin" class="w-3 h-3 text-red-500"></i>
+                            <span class="truncate">${post.location}</span>
+                        </div>
+
+                        <!-- Veterinary Fundraising Progress Bar (If applicable) -->
+                        ${post.hasFund ? `
+                            <div class="bg-amber-50/80 p-2.5 rounded-2xl border border-amber-200/60 mb-2 space-y-1">
+                                <div class="flex justify-between items-center text-[10px] font-extrabold">
+                                    <span class="text-amber-900 flex items-center gap-1"><i data-lucide="heart-handshake" class="w-3 h-3 text-brand-500"></i> Viện phí thú y:</span>
+                                    <span class="text-brand-600">${formatVND(post.raised)} / ${formatVND(post.target)}</span>
+                                </div>
+                                <div class="w-full bg-amber-200/60 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-gradient-to-r from-brand-500 to-amber-500 h-full rounded-full" style="width: ${Math.min(100, (post.raised/post.target)*100)}%"></div>
+                                </div>
+                                <button onclick="donateModal(${post.id})" class="w-full mt-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-[9px] py-1 rounded-xl shadow-xs flex items-center justify-center gap-1">
+                                    <i data-lucide="heart" class="w-3 h-3"></i> Ủng Hộ Viện Phí Mổ
+                                </button>
                             </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Post Images Preview Grid -->
+                    <div class="relative bg-slate-900 overflow-hidden">
+                        <div class="grid ${post.images.length > 1 ? 'grid-cols-2 gap-0.5' : 'grid-cols-1'}">
+                            ${post.images.map(img => `<img src="${img}" class="w-full h-44 object-cover">`).join('')}
                         </div>
                     </div>
-                `;
-                container.innerHTML += html;
-            });
+
+                    <!-- Interactive Mini Map Card -->
+                    <div class="p-2 border-b border-slate-100 bg-slate-50/50">
+                        <div id="mini-map-${post.id}" class="h-24 w-full rounded-xl border border-slate-200"></div>
+                    </div>
+
+                    <!-- Action Bar: Call SOS, Zalo, Like, Comment -->
+                    <div class="px-3 py-2 flex items-center justify-between border-b border-slate-100 text-xs">
+                        <div class="flex items-center gap-3">
+                            <button onclick="toggleAppLike(${post.id})" class="flex items-center gap-1 font-bold ${post.liked ? 'text-red-500' : 'text-slate-400'}">
+                                <i data-lucide="heart" class="w-4 h-4 ${post.liked ? 'fill-red-500' : ''}"></i>
+                                <span class="text-[10px]">${post.likes}</span>
+                            </button>
+                            <button onclick="focusCommentInput(${post.id})" class="flex items-center gap-1 text-slate-400 font-bold">
+                                <i data-lucide="message-square" class="w-4 h-4"></i>
+                                <span class="text-[10px]">${post.comments.length}</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <a href="https://zalo.me/${post.phone}" target="_blank" class="bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-xs active:scale-95">
+                                <i data-lucide="message-circle" class="w-3 h-3"></i> Zalo
+                            </a>
+                            <a href="tel:${post.phone}" class="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-extrabold px-3 py-1 rounded-full flex items-center gap-1 shadow-xs active:scale-95 animate-pulse">
+                                <i data-lucide="phone" class="w-3 h-3"></i> Gọi SOS
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Comments & Timeline Section -->
+                    <div class="p-3 bg-slate-50/80 space-y-2">
+                        <!-- Timeline Progress Indicator -->
+                        <div class="flex items-center gap-1 text-[9px] font-bold text-slate-500 bg-white p-1.5 rounded-xl border border-slate-100">
+                            <i data-lucide="clock" class="w-3 h-3 text-brand-500"></i> Tiến độ: 
+                            <span class="text-slate-800">${post.timeline && post.timeline.length ? post.timeline[post.timeline.length - 1].note : 'Đã ghi nhận'}</span>
+                        </div>
+
+                        <!-- Comment list -->
+                        <div id="comments-box-${post.id}" class="space-y-1.5 max-h-28 overflow-y-auto no-scrollbar">
+                            ${post.comments.map(c => `
+                                <div class="bg-white p-2 rounded-xl border border-slate-100 text-[10px]">
+                                    <span class="font-bold text-slate-800">${c.name}:</span>
+                                    <span class="text-slate-600">${c.text}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <!-- Comment Form Input -->
+                        <form onsubmit="submitAppComment(event, ${post.id})" class="flex gap-1.5 pt-1">
+                            <input type="text" id="input-comment-${post.id}" required placeholder="Thêm bình luận / cập nhật..." class="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-200 text-[10px] bg-white focus:ring-1 focus:ring-brand-500 outline-none">
+                            <button type="submit" class="bg-brand-500 text-white px-2.5 py-1.5 rounded-xl text-[10px] font-bold">Gửi</button>
+                        </form>
+                    </div>
+                </div>
+            `).join('');
+
+            // Re-initialize Lucide icons and Mini maps
+            lucide.createIcons();
+            setTimeout(() => {
+                posts.forEach(post => initMiniMap(post));
+            }, 100);
         }
 
-        function filterPosts(status) {
-            currentFilter = status;
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('bg-emerald-600', 'text-white');
-                btn.classList.add('bg-white', 'text-slate-600', 'border', 'border-slate-200');
-            });
-            event.target.classList.remove('bg-white', 'text-slate-600', 'border', 'border-slate-200');
-            event.target.classList.add('bg-emerald-600', 'text-white');
-            renderPosts();
+        function getStatusBadgeHTML(status) {
+            if (status === 'SOS Khẩn cấp') {
+                return `<span class="bg-red-100 text-red-600 border border-red-200 text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider sos-badge-pulse flex items-center gap-1">🚨 SOS Khẩn cấp</span>`;
+            } else if (status === 'Đang xử lý') {
+                return `<span class="bg-amber-100 text-amber-700 border border-amber-200 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase flex items-center gap-1">🟡 Đang xử lý</span>`;
+            } else {
+                return `<span class="bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase flex items-center gap-1">🟢 Cần nhận nuôi</span>`;
+            }
         }
 
-        function renderMapMarkers() {
-            if (!map) return;
-            allPosts.forEach(post => {
-                if(post.lat && post.lng) {
-                    L.marker([post.lat, post.lng]).addTo(map)
-                      .bindPopup(`<b>${post.title}</b><br>${post.locationName}<br><a href="tel:${post.phone}" style="color:green;font-weight:bold;">Gọi: ${post.phone}</a>`);
+        function formatVND(amount) {
+            return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+        }
+
+        // --- MINI MAP INITIALIZER ---
+        function initMiniMap(post) {
+            const mapId = `mini-map-${post.id}`;
+            const mapEl = document.getElementById(mapId);
+            if (!mapEl) return;
+
+            if (miniMaps[post.id]) {
+                miniMaps[post.id].remove();
+            }
+
+            const mini = L.map(mapId, {
+                center: [post.lat, post.lng],
+                zoom: 14,
+                zoomControl: false,
+                dragging: false,
+                scrollWheelZoom: false
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mini);
+            L.marker([post.lat, post.lng]).addTo(mini);
+
+            miniMaps[post.id] = mini;
+        }
+
+        // --- FILTER CHIPS CONTROLLER ---
+        function filterFeed(type, btn) {
+            document.querySelectorAll('.filter-chip').forEach(b => {
+                b.className = 'filter-chip bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap';
+            });
+            btn.className = 'filter-chip bg-slate-900 text-white px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-xs';
+
+            if (type === 'all') {
+                renderFeed(appPosts);
+            } else if (type === 'SOS') {
+                renderFeed(appPosts.filter(p => p.status === 'SOS Khẩn cấp'));
+            } else if (type === 'fund') {
+                renderFeed(appPosts.filter(p => p.hasFund));
+            } else if (type === 'near') {
+                renderFeed(appPosts.filter(p => parseFloat(p.distance) <= 3.0));
+            } else {
+                renderFeed(appPosts.filter(p => p.petType === type));
+            }
+        }
+
+        function toggleAppLike(id) {
+            const post = appPosts.find(p => p.id === id);
+            if (post) {
+                post.liked = !post.liked;
+                post.likes += post.liked ? 1 : -1;
+                renderFeed(appPosts);
+            }
+        }
+
+        function focusCommentInput(id) {
+            const input = document.getElementById(`input-comment-${id}`);
+            if (input) input.focus();
+        }
+
+        function submitAppComment(e, id) {
+            e.preventDefault();
+            const input = document.getElementById(`input-comment-${id}`);
+            const text = input.value.trim();
+            if (!text) return;
+
+            const post = appPosts.find(p => p.id === id);
+            if (post) {
+                post.comments.push({
+                    name: "Bạn (Tôi)",
+                    text: text,
+                    time: "Vừa xong"
+                });
+                input.value = "";
+                renderFeed(appPosts);
+            }
+        }
+
+        function donateModal(id) {
+            const amount = prompt("Nhập số tiền ủng hộ phẫu thuật cho bé (VNĐ):", "100000");
+            if (amount && !isNaN(amount)) {
+                const post = appPosts.find(p => p.id === id);
+                if (post) {
+                    post.raised += parseInt(amount);
+                    alert(`🎉 Cảm ơn bạn đã quyên góp ${formatVND(amount)} cho ca cứu hộ!`);
+                    renderFeed(appPosts);
                 }
-            });
+            }
         }
 
-        async function handleCreatePost(event) {
-            event.preventDefault();
-            
+        // --- FULL MAP TAB LOGIC WITH Leaflet.js ---
+        function initAppFullMap() {
+            if (appFullMap) {
+                appFullMap.invalidateSize();
+                return;
+            }
+
+            appFullMap = L.map('app-full-map', { zoomControl: false }).setView([10.7769, 106.7009], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(appFullMap);
+
+            appPosts.forEach(post => {
+                const markerColor = post.status === 'SOS Khẩn cấp' ? '#ef4444' : (post.status === 'Đang xử lý' ? '#f59e0b' : '#10b981');
+                
+                const customIcon = L.divIcon({
+                    className: 'custom-sos-marker',
+                    html: `<div style="background:${markerColor}; color:white; width:28px; height:28px; border-radius:50%; border:3px solid white; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 10px rgba(0,0,0,0.3); font-size:12px;">🐾</div>`,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+
+                const marker = L.marker([post.lat, post.lng], { icon: customIcon }).addTo(appFullMap);
+
+                marker.bindPopup(`
+                    <div style="width: 170px;" class="p-1 text-xs">
+                        <img src="${post.images[0]}" style="width:100%; height:90px; object-fit:cover; border-radius:8px; margin-bottom:6px;">
+                        <p class="font-bold text-slate-800 text-[11px] leading-tight mb-1">${post.title}</p>
+                        <p class="text-[9px] text-slate-500 mb-2">${post.location}</p>
+                        <a href="tel:${post.phone}" style="background:#10b981; color:white;" class="block text-center font-bold text-[9px] py-1 rounded-md">Gọi Cứu Hộ Ngay</a>
+                    </div>
+                `);
+            });
+
+            appFullMap.invalidateSize();
+        }
+
+        function locateUserOnMap() {
+            if (navigator.geolocation && appFullMap) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    appFullMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
+                    L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(appFullMap)
+                        .bindPopup("Vị trí GPS của bạn").openPopup();
+                }, () => {
+                    alert("Hãy cho phép ứng dụng truy cập vị trí GPS của bạn!");
+                });
+            }
+        }
+
+        // --- POST TAB & MAP PICKER ---
+        function initPickerMap() {
+            if (pickerMap) {
+                pickerMap.invalidateSize();
+                return;
+            }
+
+            pickerMap = L.map('post-picker-map', { zoomControl: false }).setView([postPickerLocation.lat, postPickerLocation.lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(pickerMap);
+
+            pickerMarker = L.marker([postPickerLocation.lat, postPickerLocation.lng], { draggable: true }).addTo(pickerMap);
+
+            pickerMap.on('click', (e) => {
+                postPickerLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
+                pickerMarker.setLatLng(e.latlng);
+                document.getElementById('app-post-location-text').value = `Tọa độ chọn: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+            });
+
+            pickerMarker.on('dragend', () => {
+                const p = pickerMarker.getLatLng();
+                postPickerLocation = { lat: p.lat, lng: p.lng };
+                document.getElementById('app-post-location-text').value = `Tọa độ chọn: ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
+            });
+
+            pickerMap.invalidateSize();
+        }
+
+        function previewAppMultipleImages(e) {
+            const files = Array.from(e.target.files).slice(0, 3);
+            const previewBox = document.getElementById('app-image-preview-box');
+            const placeholder = document.getElementById('app-upload-placeholder');
+
+            if (files.length > 0) {
+                placeholder.classList.add('hidden');
+                previewBox.classList.remove('hidden');
+                previewBox.innerHTML = '';
+
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        const img = document.createElement('img');
+                        img.src = evt.target.result;
+                        img.className = 'h-20 w-full object-cover rounded-xl border border-slate-200 shadow-xs';
+                        previewBox.appendChild(img);
+                    }
+                    reader.readAsDataURL(file);
+                });
+            }
+        }
+
+        function toggleFundInput(cb) {
+            document.getElementById('fund-target-box').classList.toggle('hidden', !cb.checked);
+        }
+
+        function getGPSLocationForPost() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    postPickerLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    document.getElementById('app-post-location-text').value = `Vị trí GPS hiện tại: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+                    if (pickerMap && pickerMarker) {
+                        pickerMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
+                        pickerMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
+                    }
+                });
+            }
+        }
+
+        function handleMobilePostSubmit(e) {
+            e.preventDefault();
+            const title = document.getElementById('app-post-title').value;
+            const pet = document.getElementById('app-post-pet').value;
+            const status = document.getElementById('app-post-status').value;
+            const location = document.getElementById('app-post-location-text').value;
+            const phone = document.getElementById('app-post-phone').value;
+            const desc = document.getElementById('app-post-desc').value;
+            const hasFund = document.getElementById('app-post-has-fund').checked;
+            const fundTarget = parseInt(document.getElementById('app-post-fund-target').value) || 0;
+
+            const previewImgs = Array.from(document.querySelectorAll('#app-image-preview-box img')).map(img => img.src);
+            const finalImages = previewImgs.length > 0 ? previewImgs : ["https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=800&q=80"];
+
             const newPost = {
-                title: document.getElementById('post-title').value,
-                petType: document.getElementById('post-pet-type').value,
-                status: document.getElementById('post-status').value,
-                images: [document.getElementById('post-image').value || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600'],
-                locationName: document.getElementById('post-location-name').value,
-                lat: selectedLat,
-                lng: selectedLng,
-                phone: document.getElementById('post-phone').value,
-                description: document.getElementById('post-desc').value,
-                author: 'Tình Nguyện Viên',
-                avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
-                time: 'Vừa xong'
+                id: Date.now(),
+                author: "Nguyễn Minh Tâm (Bạn)",
+                avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80",
+                title: title,
+                petType: pet,
+                status: status,
+                images: finalImages,
+                phone: phone,
+                desc: desc,
+                location: location,
+                lat: postPickerLocation.lat,
+                lng: postPickerLocation.lng,
+                time: "Vừa xong",
+                distance: "0.1 km",
+                likes: 1,
+                liked: true,
+                hasFund: hasFund,
+                raised: 0,
+                target: fundTarget,
+                comments: [],
+                timeline: [{ status: status, note: "Phát tín hiệu SOS khẩn cấp", time: "Vừa xong" }]
             };
 
-            try {
-                // Đẩy thẳng lên đám mây Firebase Firestore
-                await window.addDoc(window.collection(window.db, "rescue_posts"), newPost);
-                alert("Đăng ca cứu hộ thành công lên Cloud!");
-                document.getElementById('sos-form').reset();
-                switchTab('feed');
-            } catch (e) {
-                console.error("Lỗi đăng bài: ", e);
-                alert("Có lỗi xảy ra khi lưu lên Cloud, vui lòng thử lại!");
-            }
+            appPosts.unshift(newPost);
+            
+            e.target.reset();
+            document.getElementById('app-upload-placeholder').classList.remove('hidden');
+            document.getElementById('app-image-preview-box').classList.add('hidden');
+
+            alert("🚨 Tín hiệu SOS cứu hộ của bạn đã được phát báo thành công!");
+            renderFeed(appPosts);
+            switchTab('feed');
+        }
+
+        // --- RENDER LEADERBOARD ---
+        function renderAppLeaderboard() {
+            const podium = document.getElementById('app-podium');
+            const top3 = leaderboardData.slice(0, 3);
+
+            podium.innerHTML = `
+                <!-- Top 2 -->
+                <div class="flex flex-col items-center">
+                    <img src="${top3[1].avatar}" class="w-11 h-11 rounded-full border-2 border-slate-300 object-cover shadow-sm mb-1">
+                    <span class="text-[9px] font-bold text-slate-800 truncate max-w-[70px]">${top3[1].name}</span>
+                    <span class="text-[8px] text-brand-600 font-semibold">${top3[1].rescued} ca</span>
+                    <div class="w-full bg-slate-200 h-14 rounded-t-xl mt-1 flex items-center justify-center font-black text-slate-400 text-xs">2</div>
+                </div>
+
+                <!-- Top 1 -->
+                <div class="flex flex-col items-center -mt-3">
+                    <i data-lucide="crown" class="w-4 h-4 text-amber-500 mb-0.5"></i>
+                    <img src="${top3[0].avatar}" class="w-13 h-13 rounded-full border-2 border-amber-400 object-cover shadow-md mb-1">
+                    <span class="text-[10px] font-extrabold text-slate-900 truncate max-w-[80px]">${top3[0].name}</span>
+                    <span class="text-[8px] text-brand-600 font-bold">${top3[0].rescued} ca</span>
+                    <div class="w-full bg-gradient-to-t from-amber-400 to-amber-300 h-20 rounded-t-xl mt-1 flex items-center justify-center font-black text-white text-sm shadow-sm">1</div>
+                </div>
+
+                <!-- Top 3 -->
+                <div class="flex flex-col items-center">
+                    <img src="${top3[2].avatar}" class="w-11 h-11 rounded-full border-2 border-amber-700 object-cover shadow-sm mb-1">
+                    <span class="text-[9px] font-bold text-slate-800 truncate max-w-[70px]">${top3[2].name}</span>
+                    <span class="text-[8px] text-brand-600 font-semibold">${top3[2].rescued} ca</span>
+                    <div class="w-full bg-amber-100 h-10 rounded-t-xl mt-1 flex items-center justify-center font-black text-amber-800 text-xs">3</div>
+                </div>
+            `;
+
+            const list = document.getElementById('app-leaderboard-list');
+            list.innerHTML = leaderboardData.map(item => `
+                <div class="p-2.5 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold w-4 text-center ${item.rank <= 3 ? 'text-amber-500' : 'text-slate-400'}">#${item.rank}</span>
+                        <img src="${item.avatar}" class="w-7 h-7 rounded-full object-cover">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-[11px] leading-tight">${item.name}</h4>
+                            <span class="text-[9px] text-brand-600 font-medium">${item.title}</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="font-black text-slate-800 text-xs block">${item.rescued} Ca</span>
+                        <span class="text-[9px] text-slate-400">${item.points} pts</span>
+                    </div>
+                </div>
+            `).join('');
+
+            lucide.createIcons();
+        }
+
+        function updateRadius(val) {
+            document.getElementById('radius-value-text').innerText = `${val} km`;
+        }
+
+        function toggleNotificationModal() {
+            document.getElementById('notification-modal').classList.toggle('hidden');
         }
     </script>
 </body>
